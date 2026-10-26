@@ -1,0 +1,7 @@
+<!-- Add inside <dict> of ios/Runner/Info.plist (after running: flutter create . --platforms=ios) -->
+<key>NSCameraUsageDescription</key><string>Clever Bill uses the camera to scan barcodes and take product photos.</string>
+<key>NSPhotoLibraryUsageDescription</key><string>Choose product, logo and profile photos from your library.</string>
+<key>NSFaceIDUsageDescription</key><string>Unlock Clever Bill with Face ID.</string>
+<key>NSBluetoothAlwaysUsageDescription</key><string>Connect to your Bluetooth receipt printer.</string>
+<key>LSApplicationQueriesSchemes</key>
+<array><string>https</string><string>tel</string><string>mailto</string><string>whatsapp</string></array>

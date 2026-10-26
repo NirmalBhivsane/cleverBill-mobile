@@ -1,0 +1,9 @@
+.dart_tool/
+build/
+.packages
+.flutter-plugins*
+*.iml
+.idea/
+android/local.properties
+android/app/google-services.json
+ios/Pods/
