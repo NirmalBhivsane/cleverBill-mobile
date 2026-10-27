@@ -161,6 +161,9 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> signOut({bool callApi = true}) async {
     if (_signingOut) return;
     _signingOut = true;
+    // Set unauthenticated FIRST so the router redirect fires immediately
+    // before any async cleanup — prevents blank screen on web.
+    state = const AuthState(status: AuthStatus.unauthenticated);
     try {
       if (callApi) {
         try {
@@ -179,8 +182,6 @@ class AuthController extends StateNotifier<AuthState> {
       } catch (_) {}
     } finally {
       _signingOut = false;
-      // always leave the signed-in state -> router redirects to Welcome
-      state = const AuthState(status: AuthStatus.unauthenticated);
     }
   }
 }

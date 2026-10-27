@@ -250,14 +250,17 @@ class MoreScreen extends ConsumerWidget {
             const SizedBox(height: 14),
             OutlinedButton.icon(
               onPressed: () async {
-                if (await confirm(
+                final ok = await confirm(
                   context,
                   'Sign out?',
                   'You will need to sign in again.',
                   ok: 'Sign out',
                   danger: true,
-                ))
-                  ref.read(authProvider.notifier).signOut();
+                );
+                if (ok) {
+                  await ref.read(authProvider.notifier).signOut();
+                  if (context.mounted) context.go('/welcome');
+                }
               },
               icon: const Icon(Icons.logout),
               label: const Text('Sign out'),
@@ -1335,14 +1338,17 @@ class SecurityScreen extends ConsumerWidget {
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 onTap: () async {
-                  if (await confirm(
+                  final ok = await confirm(
                     context,
                     'Sign out?',
                     'You will need to sign in again.',
                     ok: 'Sign out',
                     danger: true,
-                  ))
-                    ref.read(authProvider.notifier).signOut();
+                  );
+                  if (ok) {
+                    await ref.read(authProvider.notifier).signOut();
+                    if (context.mounted) context.go('/welcome');
+                  }
                 },
               ),
               const Divider(height: 1, indent: 56),
@@ -1371,6 +1377,7 @@ class SecurityScreen extends ConsumerWidget {
                       await ref
                           .read(authProvider.notifier)
                           .signOut(callApi: false);
+                      if (context.mounted) context.go('/welcome');
                     } catch (e) {
                       if (context.mounted) toast(context, '$e', error: true);
                     }

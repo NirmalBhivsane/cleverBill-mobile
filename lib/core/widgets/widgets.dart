@@ -521,16 +521,16 @@ Future<bool> confirm(
 }) async {
   final r = await showDialog<bool>(
     context: context,
-    builder: (_) => AlertDialog(
+    builder: (ctx) => AlertDialog(
       title: Text(title),
       content: Text(msg),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context, false),
+          onPressed: () => Navigator.pop(ctx, false),
           child: const Text('Cancel'),
         ),
         TextButton(
-          onPressed: () => Navigator.pop(context, true),
+          onPressed: () => Navigator.pop(ctx, true),
           child: Text(
             ok,
             style: TextStyle(
