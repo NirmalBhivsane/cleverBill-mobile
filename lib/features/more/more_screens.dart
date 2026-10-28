@@ -871,12 +871,43 @@ class _BizState extends ConsumerState<BusinessSettingsScreen> {
       source: ImageSource.gallery,
       maxWidth: 800,
       imageQuality: 85,
+      requestFullMetadata: false,
     );
     if (x == null) return;
     setState(() => _logoBusy = true);
     try {
-      final url = await ref.read(apiProvider).uploadProductImage(x.path);
-      if (url != null) setState(() => _logo = url);
+      final bytes = await x.readAsBytes();
+      if (bytes.isEmpty) {
+        if (mounted) toast(context, 'Could not read that image', error: true);
+        return;
+      }
+      final url = await ref.read(apiProvider).uploadProductImage(
+        x.path,
+        bytes: bytes,
+        filename: x.name,
+      );
+      if (url != null && url.isNotEmpty) {
+        setState(() => _logo = url);
+        if (_name.text.trim().isNotEmpty) {
+          String? n(TextEditingController c) =>
+              c.text.trim().isEmpty ? null : c.text.trim();
+          await ref.read(apiProvider).updateBusinessProfile({
+            'businessName': _name.text.trim(),
+            'phone': n(_phone),
+            'email': n(_email),
+            'address': n(_addr),
+            'gstin': n(_gstin)?.toUpperCase(),
+            'gstNumber': n(_gstin)?.toUpperCase(),
+            'panNumber': n(_pan)?.toUpperCase(),
+            'stateCode': n(_state),
+            'invoicePrefix': n(_prefix),
+            'logoUrl': url,
+          });
+        }
+        if (mounted) toast(context, 'Logo updated');
+      } else if (mounted) {
+        toast(context, 'Could not upload logo', error: true);
+      }
     } catch (e) {
       if (mounted) toast(context, '$e', error: true);
     } finally {
@@ -984,8 +1015,16 @@ class _BizState extends ConsumerState<BusinessSettingsScreen> {
                         minimumSize: const Size(100, 42),
                       ),
                       onPressed: _logoBusy ? null : _pickLogo,
-                      icon: const Icon(Icons.photo_camera_outlined, size: 18),
-                      label: Text(_logo.isEmpty ? 'Add logo' : 'Change'),
+                      icon: _logoBusy
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.photo_camera_outlined, size: 18),
+                      label: Text(_logoBusy
+                          ? 'Uploading...'
+                          : (_logo.isEmpty ? 'Add logo' : 'Change')),
                     ),
                   ],
                 ),

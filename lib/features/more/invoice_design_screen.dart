@@ -76,16 +76,29 @@ class _InvoiceDesignState extends ConsumerState<InvoiceDesignScreen> {
       source: ImageSource.gallery,
       maxWidth: 800,
       imageQuality: 90,
+      requestFullMetadata: false,
     );
     if (x == null) return;
     setState(() => _busy = true);
     try {
-      final url = await ref.read(apiProvider).uploadProductImage(x.path);
-      if (url != null)
+      final bytes = await x.readAsBytes();
+      if (bytes.isEmpty) {
+        if (mounted) toast(context, 'Could not read that image', error: true);
+        return;
+      }
+      final url = await ref.read(apiProvider).uploadProductImage(
+        x.path,
+        bytes: bytes,
+        filename: x.name,
+      );
+      if (url != null) {
         setState(() {
           _d['signatureUrl'] = url;
           _d['showSignature'] = true;
         });
+      } else if (mounted) {
+        toast(context, 'Could not upload signature', error: true);
+      }
     } catch (e) {
       if (mounted) toast(context, '$e', error: true);
     } finally {

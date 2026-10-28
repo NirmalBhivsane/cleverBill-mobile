@@ -61,12 +61,38 @@ class _ProfileState extends ConsumerState<ProfileScreen> {
       source: ImageSource.gallery,
       maxWidth: 600,
       imageQuality: 85,
+      requestFullMetadata: false,
     );
     if (x == null) return;
     setState(() => _busy = true);
     try {
-      final url = await ref.read(apiProvider).uploadProductImage(x.path);
-      if (url != null) setState(() => _photo = url);
+      final bytes = await x.readAsBytes();
+      if (bytes.isEmpty) {
+        if (mounted) toast(context, 'Could not read that image', error: true);
+        return;
+      }
+      final url = await ref.read(apiProvider).uploadProductImage(
+        x.path,
+        bytes: bytes,
+        filename: x.name,
+      );
+      if (url != null && url.isNotEmpty) {
+        setState(() => _photo = url);
+        try {
+          await ref.read(apiProvider).updateProfile({
+            'name': _name.text.trim().isEmpty ? 'User' : _name.text.trim(),
+            'phoneNumber': _phone.text.trim(),
+            'phone': _phone.text.trim(),
+            'profilePhoto': url,
+          });
+          ref.invalidate(profileProvider);
+          if (mounted) toast(context, 'Profile photo updated');
+        } catch (_) {
+          if (mounted) toast(context, 'Photo selected. Click Save profile to apply.');
+        }
+      } else {
+        if (mounted) toast(context, 'Could not upload photo', error: true);
+      }
     } catch (e) {
       if (mounted) toast(context, '$e', error: true);
     } finally {
@@ -82,7 +108,8 @@ class _ProfileState extends ConsumerState<ProfileScreen> {
       await ref.read(apiProvider).updateProfile({
         'name': _name.text.trim(),
         'phoneNumber': _phone.text.trim(),
-        'profilePhoto': _photo,
+        'phone': _phone.text.trim(),
+        if (_photo.isNotEmpty) 'profilePhoto': _photo,
       });
       ref.invalidate(profileProvider);
       if (mounted) toast(context, 'Profile updated');
@@ -123,15 +150,24 @@ class _ProfileState extends ConsumerState<ProfileScreen> {
                         right: 0,
                         bottom: 0,
                         child: InkWell(
-                          onTap: _pickPhoto,
+                          onTap: _busy ? null : _pickPhoto,
                           child: CircleAvatar(
                             radius: 16,
                             backgroundColor: C.primary,
-                            child: const Icon(
-                              Icons.camera_alt,
-                              size: 16,
-                              color: Colors.white,
-                            ),
+                            child: _busy
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.camera_alt,
+                                    size: 16,
+                                    color: Colors.white,
+                                  ),
                           ),
                         ),
                       ),

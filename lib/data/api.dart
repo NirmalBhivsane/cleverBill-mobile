@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart' show Options;
+import 'package:image_picker/image_picker.dart' show XFile;
 
 import '../core/network/api_client.dart';
 import '../core/utils/format.dart';
@@ -181,12 +182,60 @@ class Api {
   Future<void> deleteProduct(String id) async => c.delete('/api/products/$id');
   Future<String> generateBarcode() async =>
       js(jm(await c.get('/api/products/generate-barcode')).values.first);
-  Future<String?> uploadProductImage(String path) async {
-    final d = jm(await c.upload('/api/products/upload-image', 'file', path));
-    return (d['url'] ??
-            d['imageUrl'] ??
-            (d.values.isNotEmpty ? d.values.first : null))
-        ?.toString();
+  Future<String?> uploadProductImage(
+    String? path, {
+    List<int>? bytes,
+    String? filename,
+  }) async {
+    List<int>? fileBytes = bytes;
+    if (fileBytes == null && path != null && path.isNotEmpty) {
+      try {
+        fileBytes = await XFile(path).readAsBytes();
+      } catch (_) {}
+    }
+    final d = await c.upload(
+      '/api/products/upload-image',
+      'image',
+      filePath: path,
+      bytes: fileBytes,
+      filename: filename ??
+          (path != null && path.isNotEmpty
+              ? path.split('/').last.split('\\').last
+              : 'image.jpg'),
+    );
+    return _imageUrlFrom(d);
+  }
+
+  String? _imageUrlFrom(dynamic d) {
+    bool ok(String v) =>
+        v.isNotEmpty &&
+        v != 'null' &&
+        (v.startsWith('http://') ||
+            v.startsWith('https://') ||
+            v.startsWith('/') ||
+            v.contains('cloudinary'));
+    if (d is String && ok(d)) return d;
+    if (d is Map) {
+      final m = Map<String, dynamic>.from(d);
+      for (final key in [
+        'url',
+        'imageUrl',
+        'fileUrl',
+        'secure_url',
+        'secureUrl',
+      ]) {
+        final v = m[key];
+        if (v is String && ok(v)) return v;
+      }
+      if (m['data'] is String && ok(m['data'] as String)) {
+        return m['data'] as String;
+      }
+      if (m['data'] is Map) return _imageUrlFrom(m['data']);
+      for (final v in m.values) {
+        if (v is String && ok(v)) return v;
+      }
+    }
+    return null;
   }
 
   Future<List<Category>> categories() async =>

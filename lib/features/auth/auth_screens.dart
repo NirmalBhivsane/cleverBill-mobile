@@ -10,7 +10,6 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'dart:async';
-import 'dart:io';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
@@ -772,7 +771,8 @@ class _ShopSetupState extends ConsumerState<ShopSetupScreen> {
   final _name = TextEditingController();
   final _city = TextEditingController();
   String _type = 'Grocery';
-  String? _logoPath;
+  Uint8List? _logoBytes;
+  String? _logoName;
   static const types = [
     'Grocery',
     'Medical',
@@ -789,8 +789,15 @@ class _ShopSetupState extends ConsumerState<ShopSetupScreen> {
       source: ImageSource.gallery,
       maxWidth: 800,
       imageQuality: 85,
+      requestFullMetadata: false,
     );
-    if (x != null) setState(() => _logoPath = x.path);
+    if (x == null) return;
+    final bytes = await x.readAsBytes();
+    if (bytes.isEmpty) return;
+    setState(() {
+      _logoBytes = bytes;
+      _logoName = x.name;
+    });
   }
 
   void _next() {
@@ -800,7 +807,8 @@ class _ShopSetupState extends ConsumerState<ShopSetupScreen> {
       'name': _name.text.trim(),
       'type': _type,
       'city': _city.text.trim(),
-      'logo': _logoPath,
+      'logoBytes': _logoBytes,
+      'logoName': _logoName,
     };
     context.push('/setup/billing');
   }
@@ -851,10 +859,10 @@ class _ShopSetupState extends ConsumerState<ShopSetupScreen> {
                   CircleAvatar(
                     radius: 38,
                     backgroundColor: C.primarySoft,
-                    backgroundImage: _logoPath == null
+                    backgroundImage: _logoBytes == null
                         ? null
-                        : FileImage(File(_logoPath!)),
-                    child: _logoPath == null
+                        : MemoryImage(_logoBytes!),
+                    child: _logoBytes == null
                         ? Icon(
                             Icons.storefront_rounded,
                             size: 36,
@@ -942,9 +950,14 @@ class _BillingSetupState extends ConsumerState<BillingSetupScreen> {
     final api = ref.read(apiProvider);
     try {
       String? logoUrl;
-      if (d['logo'] != null) {
+      final logoBytes = d['logoBytes'];
+      if (logoBytes is List<int> && logoBytes.isNotEmpty) {
         try {
-          logoUrl = await api.uploadProductImage(d['logo'] as String);
+          logoUrl = await api.uploadProductImage(
+            null,
+            bytes: logoBytes,
+            filename: d['logoName'] as String?,
+          );
         } catch (_) {}
       }
       await api.updateBusinessProfile({

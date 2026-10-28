@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart' hide Text;
 
 import '../../core/i18n/i18n.dart';
@@ -975,6 +973,8 @@ class _ProductFormState extends ConsumerState<ProductFormScreen> {
   late bool _track = !(widget.product?.isService ?? false);
   DateTime? _expiry;
   String? _imagePath;
+  List<int>? _imageBytes;
+  String? _imageName;
   bool _busy = false;
   static const units = [
     'PCS',
@@ -1010,8 +1010,16 @@ class _ProductFormState extends ConsumerState<ProductFormScreen> {
       source: s,
       maxWidth: 1000,
       imageQuality: 85,
+      requestFullMetadata: false,
     );
-    if (x != null) setState(() => _imagePath = x.path);
+    if (x != null) {
+      final b = await x.readAsBytes();
+      setState(() {
+        _imagePath = x.path;
+        _imageBytes = b;
+        _imageName = x.name;
+      });
+    }
   }
 
   Future<void> _save() async {
@@ -1030,8 +1038,12 @@ class _ProductFormState extends ConsumerState<ProductFormScreen> {
     final api = ref.read(apiProvider);
     try {
       String? img = widget.product?.imageUrl;
-      if (_imagePath != null)
-        img = await api.uploadProductImage(_imagePath!) ?? img;
+      if (_imageBytes != null && _imageBytes!.isNotEmpty)
+        img = await api.uploadProductImage(
+          _imagePath,
+          bytes: _imageBytes,
+          filename: _imageName,
+        ) ?? img;
       final isGst = ref.read(authProvider).isGst;
       await api.saveProduct({
         'name': _name.text.trim(),
@@ -1139,11 +1151,11 @@ class _ProductFormState extends ConsumerState<ProductFormScreen> {
                     color: C.primarySoft,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: _imagePath != null
+                  child: _imageBytes != null
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(14),
-                          child: Image.file(
-                            File(_imagePath!),
+                          child: Image.memory(
+                            Uint8List.fromList(_imageBytes!),
                             fit: BoxFit.cover,
                           ),
                         )

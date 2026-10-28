@@ -5,6 +5,7 @@ import '../i18n/i18n.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../config/env.dart';
 import '../theme/app_theme.dart';
 
 class AppCard extends StatelessWidget {
@@ -243,6 +244,18 @@ class AsyncBody<T> extends StatelessWidget {
   );
 }
 
+String _absUrl(String url) {
+  final u = url.trim();
+  if (u.startsWith('http://') ||
+      u.startsWith('https://') ||
+      u.startsWith('blob:') ||
+      u.startsWith('data:')) {
+    return u;
+  }
+  final base = Env.apiBase.replaceAll(RegExp(r'/$'), '');
+  return u.startsWith('/') ? '$base$u' : '$base/$u';
+}
+
 class AppThumb extends StatelessWidget {
   const AppThumb({
     super.key,
@@ -260,10 +273,10 @@ class AppThumb extends StatelessWidget {
       width: size,
       height: size,
       color: C.primarySoft,
-      child: url == null
+      child: (url == null || url!.trim().isEmpty)
           ? Icon(icon, color: C.primary, size: size * .5)
           : CachedNetworkImage(
-              imageUrl: url!,
+              imageUrl: _absUrl(url!),
               fit: BoxFit.cover,
               errorWidget: (_, __, ___) =>
                   Icon(icon, color: C.primary, size: size * .5),

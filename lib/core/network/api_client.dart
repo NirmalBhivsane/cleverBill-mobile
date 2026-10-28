@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -24,7 +25,7 @@ class ApiClient {
         baseUrl: Env.apiBase,
         connectTimeout: const Duration(seconds: 20),
         receiveTimeout: const Duration(seconds: 40),
-        headers: {'Content-Type': 'application/json'},
+        contentType: Headers.jsonContentType,
       ),
     );
     dio.interceptors.add(
@@ -247,20 +248,66 @@ class ApiClient {
     }
   }
 
-  Future<dynamic> upload(String path, String field, String filePath) async {
+  Future<dynamic> upload(
+    String path,
+    String field, {
+    String? filePath,
+    List<int>? bytes,
+    String? filename,
+  }) async {
     try {
-      final form = FormData.fromMap({
-        field: await MultipartFile.fromFile(filePath),
-      });
+      final name = _uploadFilename(filename, filePath);
+      final ext = name.split('.').last.toLowerCase();
+      final mime = ext == 'png'
+          ? 'png'
+          : (ext == 'webp'
+              ? 'webp'
+              : (ext == 'gif' ? 'gif' : 'jpeg'));
+      MultipartFile file;
+      if (bytes != null && bytes.isNotEmpty) {
+        file = MultipartFile.fromBytes(
+          Uint8List.fromList(bytes),
+          filename: name,
+          contentType: DioMediaType('image', mime),
+        );
+      } else if (filePath != null && filePath.isNotEmpty && !kIsWeb) {
+        file = await MultipartFile.fromFile(
+          filePath,
+          filename: name,
+          contentType: DioMediaType('image', mime),
+        );
+      } else {
+        throw ApiException('Upload requires file data');
+      }
+      final form = FormData.fromMap({field: file});
       return _data(
         await dio.post(
           path,
           data: form,
-          options: Options(contentType: 'multipart/form-data'),
+          options: Options(
+            contentType: Headers.multipartFormDataContentType,
+          ),
         ),
       );
     } catch (e) {
       throw _wrap(e);
     }
+  }
+
+  static String _uploadFilename(String? filename, String? filePath) {
+    var name = (filename ?? '').trim();
+    if (name.isEmpty || name.startsWith('blob:')) {
+      final fromPath = (filePath ?? '')
+          .split('/')
+          .last
+          .split('\\')
+          .last;
+      name = fromPath.startsWith('blob:') ? '' : fromPath;
+    }
+    name = name.split('/').last.split('\\').last;
+    if (name.isEmpty || !name.contains('.')) {
+      return name.isEmpty ? 'image.jpg' : '$name.jpg';
+    }
+    return name;
   }
 }
