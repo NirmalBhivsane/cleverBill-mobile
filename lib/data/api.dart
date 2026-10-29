@@ -354,15 +354,132 @@ class Api {
       jm(await c.get('/api/settings/payment-details'));
 
   // ───────── Suppliers / purchases / RFQ ─────────
-  Future<PageData<Supplier>> suppliers({String? search}) async =>
-      PageData.parse(
-        await c.get('/api/suppliers', q: {'size': 100, 'search': search}),
-        Supplier.new,
-      );
+  Future<PageData<Supplier>> suppliers({
+    String? search,
+    String? status,
+    String? state,
+    String? branchId,
+  }) async => PageData.parse(
+    await c.get(
+      '/api/suppliers',
+      q: {
+        'size': 100,
+        if (search != null && search.isNotEmpty) 'search': search,
+        if (status != null && status.isNotEmpty) 'status': status,
+        if (state != null && state.isNotEmpty) 'state': state,
+        if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+      },
+    ),
+    Supplier.new,
+  );
+
+  Future<Supplier> supplier(String id) async =>
+      Supplier(jm(await c.get('/api/suppliers/$id')));
+
   Future<void> saveSupplier(Map<String, dynamic> body, {String? id}) async =>
       id == null
       ? c.post('/api/suppliers', body: body)
       : c.put('/api/suppliers/$id', body: body);
+
+  Future<void> deleteSupplier(String id) async => c.delete('/api/suppliers/$id');
+
+  Future<void> deactivateSupplier(String id, bool active) async => c.patch(
+    '/api/suppliers/$id/status',
+    body: {'active': active, 'status': active ? 'ACTIVE' : 'INACTIVE'},
+  );
+
+  Future<List<SupplierProductMapping>> supplierProducts(
+    String supplierId,
+  ) async {
+    try {
+      final res = await c.get('/api/suppliers/$supplierId/products');
+      final list = res is Map
+          ? (res['items'] ?? res['content'] ?? res['data'])
+          : res;
+      return jlist(list, SupplierProductMapping.new);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> mapSupplierProduct(
+    String supplierId,
+    Map<String, dynamic> body,
+  ) async => c.post('/api/suppliers/$supplierId/products', body: body);
+
+  Future<void> deleteSupplierProductMapping(
+    String supplierId,
+    String mappingId,
+  ) async => c.delete('/api/suppliers/$supplierId/products/$mappingId');
+
+  Future<List<SupplierBill>> supplierBills(String supplierId) async {
+    try {
+      final res = await c.get('/api/suppliers/$supplierId/bills');
+      final list = res is Map
+          ? (res['items'] ?? res['content'] ?? res['data'])
+          : res;
+      return jlist(list, SupplierBill.new);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> uploadSupplierBill(
+    String supplierId,
+    Map<String, dynamic> body,
+  ) async => c.post('/api/suppliers/$supplierId/bills', body: body);
+
+  Future<List<PurchaseReturn>> purchaseReturns({
+    String? supplierId,
+    String? status,
+  }) async {
+    try {
+      final res = await c.get(
+        '/api/purchase-returns',
+        q: {
+          if (supplierId != null && supplierId.isNotEmpty)
+            'supplierId': supplierId,
+          if (status != null && status.isNotEmpty) 'status': status,
+        },
+      );
+      final list = res is Map
+          ? (res['items'] ?? res['content'] ?? res['data'])
+          : res;
+      return jlist(list, PurchaseReturn.new);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> createPurchaseReturn(Map<String, dynamic> body) async =>
+      c.post('/api/purchase-returns', body: body);
+
+  Future<void> approvePurchaseReturn(String id) async =>
+      c.patch('/api/purchase-returns/$id/status', body: {'status': 'Approved'});
+
+  Future<Map<String, dynamic>> supplierLedger(
+    String supplierId, {
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    try {
+      return jm(
+        await c.get(
+          '/api/suppliers/$supplierId/ledger',
+          q: {
+            if (from != null) 'from': iso(from),
+            if (to != null) 'to': iso(to),
+          },
+        ),
+      );
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> recordSupplierPayment(Map<String, dynamic> body) async =>
+      c.post('/api/supplier-payments', body: body);
+
   Future<PageData<Purchase>> purchases({
     String? supplierId,
     DateTime? from,

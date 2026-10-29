@@ -33,6 +33,85 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <!-- ZXing library for mobile_scanner on web -->
+  <script src="https://unpkg.com/@zxing/library@0.19.1" type="application/javascript"></script>
+
+  <!-- Supermarket / DMart checkout scanner beep audio synthesizer -->
+  <script>
+    (function() {
+      var audioCtx = null;
+      function getAudioContext() {
+        if (!audioCtx) {
+          var AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) {
+            audioCtx = new AudioContextClass();
+          }
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        return audioCtx;
+      }
+
+      // Pre-unlock AudioContext on any user interaction
+      function unlock() {
+        getAudioContext();
+      }
+      window.addEventListener('click', unlock, { passive: true });
+      window.addEventListener('keydown', unlock, { passive: true });
+      window.addEventListener('touchstart', unlock, { passive: true });
+
+      // DMart supermarket barcode scanner beep (2350Hz sharp 75ms beep)
+      window.playDmartBeep = function() {
+        try {
+          var ctx = getAudioContext();
+          if (!ctx) return;
+          var now = ctx.currentTime;
+          var osc = ctx.createOscillator();
+          var gain = ctx.createGain();
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(2350, now);
+
+          gain.gain.setValueAtTime(0.35, now);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.075);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+
+          osc.start(now);
+          osc.stop(now + 0.075);
+        } catch (e) {
+          console.warn('DMart beep sound error:', e);
+        }
+      };
+
+      // Cross-platform browser file download for CSV/Excel/PDF
+      window.downloadBlobFile = function(fileName, mimeType, base64Data) {
+        try {
+          var byteCharacters = atob(base64Data);
+          var byteNumbers = new Array(byteCharacters.length);
+          for (var i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          var byteArray = new Uint8Array(byteNumbers);
+          var blob = new Blob([byteArray], { type: mimeType || 'application/octet-stream' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(function() {
+            URL.revokeObjectURL(url);
+          }, 2000);
+        } catch (err) {
+          console.error('File download error:', err);
+        }
+      };
+    })();
+  </script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

@@ -25,15 +25,25 @@ class Product {
   double get price => jd(j['price']);
   double get purchasePrice => jd(j['purchasePrice']);
   double get taxPercent {
-    final slab = js(j['gstSlab']);
+    final slab = js(j['gstSlab']).toUpperCase().replaceAll(' ', '_');
     const m = {
       'ZERO': 0.0,
+      'GST_0': 0.0,
       'FIVE': 5.0,
+      'GST_5': 5.0,
       'TWELVE': 12.0,
+      'GST_12': 12.0,
       'EIGHTEEN': 18.0,
+      'GST_18': 18.0,
       'TWENTY_EIGHT': 28.0,
+      'GST_28': 28.0,
     };
-    return m[slab] ?? jd(j['taxPercent']);
+    return m[slab] ??
+        jd(j['taxPercent'] ??
+            j['taxRate'] ??
+            j['gstRate'] ??
+            j['gstPercent'] ??
+            j['tax']);
   }
 
   int get stock => ji(j['stock']);
@@ -158,21 +168,108 @@ class Supplier {
   final Map<String, dynamic> j;
   String get id => js(j['id']);
   String get name => js(j['name']);
-  String get contact => js(j['contactPerson']);
-  String get phone => js(j['phone']);
+  String get contact => js(j['contactPerson'], js(j['contact']));
+  String get phone => js(j['phone'], js(j['mobileNumber']));
   String get email => js(j['email']);
   String get address => js(j['address']);
   String get gstin => js(j['gstin'], js(j['gstNumber']));
   String get stateCode => js(j['stateCode']);
+  String get state => js(j['state'], js(j['stateName'], stateCode));
+  bool get active =>
+      jb(j['active'], js(j['status']).toUpperCase() != 'INACTIVE');
+  String get status => js(j['status'], active ? 'Active' : 'Inactive');
+  double get totalPurchases =>
+      jd(j['totalPurchases'] ?? j['totalPurchaseAmount']);
+  double get totalPaid => jd(j['totalPaid'] ?? j['paidAmount']);
+  double get outstanding => jd(
+    j['outstanding'] ??
+        j['outstandingPayable'] ??
+        j['currentOutstanding'] ??
+        (totalPurchases > totalPaid ? totalPurchases - totalPaid : 0.0),
+  );
+  double get openingBalance => jd(j['openingBalance'] ?? j['openingPayable']);
+  int get ordersCount => ji(j['ordersCount'] ?? j['orders']);
+  int get pendingDeliveries => ji(j['pendingDeliveries'] ?? j['pendingOrders']);
+  String get branchId => js(j['branchId']);
+  String get branchName => js(j['branchName']);
+}
+
+class SupplierProductMapping {
+  SupplierProductMapping(this.j);
+  final Map<String, dynamic> j;
+  String get id => js(j['id']);
+  String get supplierId => js(j['supplierId']);
+  String get supplierName => js(j['supplierName']);
+  String get productId => js(j['productId']);
+  String get productName => js(j['productName']);
+  String get hsnCode => js(j['hsnCode'], js(j['hsn']));
+  String get sku => js(j['sku'], js(j['supplierSku']));
+  double get purchasePrice => jd(j['purchasePrice']);
+  double get lastPurchasePrice => jd(j['lastPurchasePrice'] ?? purchasePrice);
+  DateTime? get lastPurchaseDate => jdt(j['lastPurchaseDate']);
+  int get stock => ji(j['stock']);
+  String get unit => js(j['unit'], 'PCS');
+  int get minOrderQty => ji(j['minOrderQty'] ?? j['minimumOrderQuantity']);
+  int get leadTimeDays => ji(j['leadTimeDays'] ?? j['leadTime']);
+  bool get isPreferred => jb(j['preferredFlag'] ?? j['isPreferred']);
+  bool get active => jb(j['active'], true);
+}
+
+class SupplierBill {
+  SupplierBill(this.j);
+  final Map<String, dynamic> j;
+  String get id => js(j['id']);
+  String get invoiceNumber => js(j['invoiceNumber'], js(j['invoiceNo']));
+  DateTime? get invoiceDate => jdt(j['invoiceDate'] ?? j['date']);
+  double get amount => jd(j['amount'] ?? j['totalAmount']);
+  String get status => js(j['status'], 'Unpaid');
+  String get billUrl => js(j['fileUrl'] ?? j['billUrl'] ?? j['attachmentUrl']);
+  String get fileName => js(j['fileName'], 'bill.pdf');
+  String get supplierId => js(j['supplierId']);
+  String get purchaseId => js(j['purchaseId']);
+}
+
+class PurchaseReturn {
+  PurchaseReturn(this.j);
+  final Map<String, dynamic> j;
+  String get id => js(j['id']);
+  String get returnNumber => js(j['returnNumber'], js(j['returnNo']));
+  DateTime? get date => jdt(j['returnDate'] ?? j['date'] ?? j['createdAt']);
+  String get supplierId => js(j['supplierId']);
+  String get supplierName => js(j['supplierName']);
+  String get purchaseId => js(j['purchaseId']);
+  String get purchaseNumber => js(j['purchaseNumber']);
+  String get productId => js(j['productId']);
+  String get productName => js(j['productName']);
+  int get quantity => ji(j['quantity'] ?? j['qty']);
+  String get reason => js(j['reason'], 'Damaged');
+  String get status => js(j['status'], 'Pending');
+  String get settlementType => js(j['settlementType'], 'Supplier Credit');
+  double get amount => jd(j['amount'] ?? j['refundAmount'] ?? j['totalAmount']);
+}
+
+class SupplierLedgerEntry {
+  SupplierLedgerEntry(this.j);
+  final Map<String, dynamic> j;
+  String get id => js(j['id']);
+  DateTime? get date => jdt(j['date']);
+  String get particulars => js(j['particulars'], js(j['description']));
+  String get ref => js(j['referenceNo'], js(j['ref']));
+  double get debit => jd(j['debit']);
+  double get credit => jd(j['credit']);
+  double get balance => jd(j['balance']);
+  String get type => js(j['type'], js(j['transactionType']));
 }
 
 class PurchaseItem {
   PurchaseItem(this.j);
   final Map<String, dynamic> j;
-  String get name => js(j['productName']);
-  int get qty => ji(j['quantity']);
-  double get rate => jd(j['purchasePrice']);
-  double get total => jd(j['totalAmount'] ?? j['lineTotal']);
+  String get id => js(j['id'], js(j['productId']));
+  String get productId => js(j['productId'], js(j['id']));
+  String get name => js(j['productName'], js(j['name']));
+  int get qty => ji(j['quantity'] ?? j['qty']);
+  double get rate => jd(j['purchasePrice'] ?? j['rate'] ?? j['price']);
+  double get total => jd(j['totalAmount'] ?? j['lineTotal'] ?? j['total']);
 }
 
 class Purchase {

@@ -1,556 +1,28 @@
 import 'dart:typed_data';
-
 import 'package:flutter/material.dart' hide Text;
-
-import '../../core/i18n/i18n.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:printing/printing.dart';
 
+import '../../core/i18n/i18n.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/format.dart';
 import '../../core/utils/json.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
-import '../customers/customer_screens.dart' show callNumber, whatsapp;
 import '../inventory/inventory_screens.dart'
     show suppliersProvider, purchasesProvider;
 import '../invoices/invoice_screens.dart' show showProductPicker;
 
-// ═════════════════════════ Suppliers ═════════════════════════
-class SuppliersScreen extends ConsumerStatefulWidget {
-  const SuppliersScreen({super.key});
-  @override
-  ConsumerState<SuppliersScreen> createState() => _SuppliersState();
-}
+export 'supplier_constants.dart';
+export 'supplier_export.dart';
+export 'supplier_analytics_sheet.dart';
+export 'supplier_main_screens.dart';
+export 'supplier_detail_screen.dart';
+export 'supplier_form_screen.dart';
 
-class _SuppliersState extends ConsumerState<SuppliersScreen> {
-  String _q = '';
-  @override
-  Widget build(BuildContext context) {
-    final async = ref.watch(suppliersProvider);
-    return Scaffold(
-      appBar: blueAppBar(
-        context,
-        'Suppliers',
-        subtitle: ref.watch(authProvider).session?.businessName,
-        actions: [
-          IconButton(
-            tooltip: 'RFQs',
-            onPressed: () => context.push('/rfqs'),
-            icon: const Icon(Icons.request_quote_outlined),
-          ),
-        ],
-      ),
-      body: AsyncBody<List<Supplier>>(
-        value: async,
-        onRetry: () => ref.invalidate(suppliersProvider),
-        builder: (all) {
-          final l = all
-              .where(
-                (s) =>
-                    s.name.toLowerCase().contains(_q) ||
-                    s.phone.contains(_q) ||
-                    s.address.toLowerCase().contains(_q),
-              )
-              .toList();
-          return RefreshIndicator(
-            onRefresh: () async => ref.refresh(suppliersProvider.future),
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Text(
-                  'Manage your suppliers and purchases',
-                  style: TextStyle(color: C.muted),
-                ),
-                const SizedBox(height: 10),
-                StatTile(
-                  label: 'Total Suppliers',
-                  value: '${all.length}',
-                  icon: Icons.groups_outlined,
-                ),
-                const SizedBox(height: 10),
-                ElevatedButton.icon(
-                  onPressed: () => context
-                      .push('/supplier-form')
-                      .then((_) => ref.invalidate(suppliersProvider)),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Supplier'),
-                ),
-                const SizedBox(height: 12),
-                AppSearchField(
-                  hint: 'Search suppliers by name, phone or city',
-                  onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
-                ),
-                const SizedBox(height: 12),
-                if (l.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 40),
-                    child: EmptyState(
-                      icon: Icons.local_shipping_outlined,
-                      title: 'No suppliers yet',
-                    ),
-                  ),
-                for (final s in l)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: AppCard(
-                      onTap: () => context.push('/supplier/${s.id}', extra: s),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Avatar(initials(s.name), size: 48),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      s.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    if (s.address.isNotEmpty)
-                                      Row(
-                                        children: [
-                                          Icon(
-                                            Icons.location_on_outlined,
-                                            size: 14,
-                                            color: C.muted,
-                                          ),
-                                          Flexible(
-                                            child: Text(
-                                              s.address,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                color: C.muted,
-                                                fontSize: 12.5,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              Icon(Icons.chevron_right, color: C.muted),
-                            ],
-                          ),
-                          if (s.phone.isNotEmpty) ...[
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                InkWell(
-                                  onTap: () => callNumber(s.phone),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.call_outlined,
-                                        size: 18,
-                                        color: C.primary,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        s.phone,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const Spacer(),
-                                InkWell(
-                                  onTap: () =>
-                                      whatsapp(s.phone, 'Hello ${s.name},'),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.chat,
-                                        size: 18,
-                                        color: Color(0xFF25D366),
-                                      ),
-                                      SizedBox(width: 6),
-                                      Text(
-                                        'WhatsApp',
-                                        style: TextStyle(
-                                          color: C.success,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-final supplierPurchasesProvider = FutureProvider.autoDispose
-    .family<List<Purchase>, String>(
-      (ref, id) async =>
-          (await ref.watch(apiProvider).purchases(supplierId: id)).items,
-    );
-
-class SupplierDetailScreen extends ConsumerWidget {
-  const SupplierDetailScreen({super.key, required this.supplier});
-  final Supplier supplier;
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final s = supplier;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Supplier Details'),
-        actions: [
-          IconButton(
-            onPressed: () => context
-                .push('/supplier-form', extra: s)
-                .then((_) => ref.invalidate(suppliersProvider)),
-            icon: const Icon(Icons.edit_outlined),
-          ),
-        ],
-      ),
-      body: DefaultTabController(
-        length: 2,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Avatar(initials(s.name), size: 58),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              s.name,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            if (s.contact.isNotEmpty)
-                              Text(s.contact, style: TextStyle(color: C.muted)),
-                            if (s.address.isNotEmpty)
-                              Text(
-                                s.address,
-                                style: TextStyle(
-                                  color: C.muted,
-                                  fontSize: 12.5,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: s.phone.isEmpty
-                              ? null
-                              : () => callNumber(s.phone),
-                          icon: const Icon(Icons.call_outlined),
-                          label: const Text('Call'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: s.phone.isEmpty
-                              ? null
-                              : () => whatsapp(s.phone, 'Hello ${s.name},'),
-                          icon: const Icon(
-                            Icons.chat,
-                            color: Color(0xFF25D366),
-                          ),
-                          label: const Text('WhatsApp'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: C.success,
-                            side: BorderSide(color: C.success),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            TabBar(
-              tabs: [
-                Tab(child: Text('Purchases')),
-                Tab(child: Text('Details')),
-              ],
-              labelColor: C.primary,
-              indicatorColor: C.primary,
-              unselectedLabelColor: C.muted,
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  ref
-                      .watch(supplierPurchasesProvider(s.id))
-                      .when(
-                        loading: () =>
-                            const Center(child: CircularProgressIndicator()),
-                        error: (e, _) => EmptyState(
-                          icon: Icons.error_outline,
-                          title: 'Could not load',
-                          message: '$e',
-                        ),
-                        data: (l) => l.isEmpty
-                            ? const EmptyState(
-                                icon: Icons.local_shipping_outlined,
-                                title: 'No purchases yet',
-                              )
-                            : ListView(
-                                padding: const EdgeInsets.all(12),
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.all(8),
-                                    child: Row(
-                                      children: [
-                                        const Text(
-                                          'Purchase History',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                        const Spacer(),
-                                        StatusChip(
-                                          '${l.length} Purchases',
-                                          color: C.muted,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  for (final p in l)
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: AppCard(
-                                        child: Row(
-                                          children: [
-                                            Column(
-                                              children: [
-                                                Text(
-                                                  dateShort(p.date)
-                                                      .substring(0, 6),
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.w700,
-                                                    fontSize: 12.5,
-                                                  ),
-                                                ),
-                                                Text(
-                                                  '${p.date?.year ?? ''}',
-                                                  style: TextStyle(
-                                                    color: C.muted,
-                                                    fontSize: 11,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(width: 14),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    p.items.isEmpty
-                                                        ? '#${p.number}'
-                                                        : p.items
-                                                              .map(
-                                                                (i) => i.name,
-                                                              )
-                                                              .join(', '),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.w800,
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    '${p.items.length} items',
-                                                    style: TextStyle(
-                                                      color: C.muted,
-                                                      fontSize: 12,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            Text(
-                                              money(p.total),
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w900,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                      ),
-                  ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      AppCard(
-                        child: Column(
-                          children: [
-                            _kv('Name', s.name),
-                            _kv(
-                              'Contact person',
-                              s.contact.isEmpty ? '—' : s.contact,
-                            ),
-                            _kv('Phone', s.phone.isEmpty ? '—' : s.phone),
-                            _kv('Email', s.email.isEmpty ? '—' : s.email),
-                            _kv('Address', s.address.isEmpty ? '—' : s.address),
-                            _kv('GSTIN', s.gstin.isEmpty ? '—' : s.gstin),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: ElevatedButton.icon(
-                  onPressed: () => context
-                      .push('/purchase-form')
-                      .then(
-                        (_) => ref.invalidate(supplierPurchasesProvider(s.id)),
-                      ),
-                  icon: const Icon(Icons.description_outlined),
-                  label: const Text('New Purchase'),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _kv(String a, String b) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 7),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 120,
-          child: Text(a, style: TextStyle(color: C.muted)),
-        ),
-        Expanded(
-          child: Text(b, style: const TextStyle(fontWeight: FontWeight.w600)),
-        ),
-      ],
-    ),
-  );
-}
-
-class SupplierFormScreen extends ConsumerStatefulWidget {
-  const SupplierFormScreen({super.key, this.supplier});
-  final Supplier? supplier;
-  @override
-  ConsumerState<SupplierFormScreen> createState() => _SupplierFormState();
-}
-
-class _SupplierFormState extends ConsumerState<SupplierFormScreen> {
-  late final _name = TextEditingController(text: widget.supplier?.name);
-  late final _contact = TextEditingController(text: widget.supplier?.contact);
-  late final _phone = TextEditingController(text: widget.supplier?.phone);
-  late final _email = TextEditingController(text: widget.supplier?.email);
-  late final _addr = TextEditingController(text: widget.supplier?.address);
-  late final _gst = TextEditingController(text: widget.supplier?.gstin);
-  bool _busy = false;
-
-  Future<void> _save() async {
-    if (_name.text.trim().isEmpty)
-      return toast(context, 'Enter supplier name', error: true);
-    setState(() => _busy = true);
-    try {
-      String? n(TextEditingController c) =>
-          c.text.trim().isEmpty ? null : c.text.trim();
-      await ref.read(apiProvider).saveSupplier({
-        'name': _name.text.trim(),
-        'contactPerson': n(_contact),
-        'phone': n(_phone),
-        'email': n(_email),
-        'address': n(_addr),
-        'gstin': n(_gst)?.toUpperCase(),
-        'active': true,
-      }, id: widget.supplier?.id);
-      ref.invalidate(suppliersProvider);
-      if (mounted) {
-        toast(context, 'Supplier saved');
-        context.pop();
-      }
-    } catch (e) {
-      if (mounted) toast(context, '$e', error: true);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(widget.supplier == null ? 'Add supplier' : 'Edit supplier'),
-    ),
-    body: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        LabeledField(label: 'Supplier name', controller: _name, required: true),
-        LabeledField(label: 'Contact person', controller: _contact),
-        LabeledField(
-          label: 'Phone',
-          controller: _phone,
-          keyboard: TextInputType.phone,
-        ),
-        LabeledField(
-          label: 'Email',
-          controller: _email,
-          keyboard: TextInputType.emailAddress,
-        ),
-        LabeledField(label: 'Address', controller: _addr, maxLines: 2),
-        LabeledField(label: 'GSTIN (optional)', controller: _gst),
-        PrimaryButton('Save supplier', loading: _busy, onPressed: _save),
-      ],
-    ),
-  );
-}
-
-// ═════════════════════════ RFQ ═════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• RFQ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 String rfqLabel(String s) => switch (s) {
   'DRAFT' => 'Draft',
   'SENT' => 'Sent',
@@ -574,7 +46,14 @@ class _RfqState extends ConsumerState<RfqScreen> {
   int _tab = 0;
 
   Future<void> _create() async {
-    final sup = ref.read(suppliersProvider).valueOrNull ?? [];
+    List<Supplier> sup = ref.read(suppliersProvider).valueOrNull ?? [];
+    if (sup.isEmpty) {
+      try {
+        sup = await ref.read(suppliersProvider.future);
+      } catch (e) {
+        debugPrint('Error loading suppliers: $e');
+      }
+    }
     String? supplierId;
     DateTime delivery = DateTime.now().add(const Duration(days: 3));
     final items =
@@ -611,14 +90,53 @@ class _RfqState extends ConsumerState<RfqScreen> {
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 6),
-                DropdownButtonFormField<String>(
-                  value: supplierId,
-                  hint: const Text('Select supplier'),
-                  items: [
-                    for (final s in sup)
-                      DropdownMenuItem(value: s.id, child: Text(s.name)),
-                  ],
-                  onChanged: (v) => set(() => supplierId = v),
+                Consumer(
+                  builder: (ctx, ref, _) {
+                    final supAsync = ref.watch(suppliersProvider);
+                    final list = supAsync.valueOrNull ?? sup;
+                    if (supAsync.isLoading && list.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: LinearProgressIndicator(),
+                      );
+                    }
+                    if (list.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'No suppliers found. Please add a supplier first.',
+                                style: TextStyle(color: C.muted, fontSize: 13),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                context.push('/supplier-form');
+                              },
+                              child: const Text('+ Add Supplier'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    return DropdownButtonFormField<String>(
+                      value: list.any((s) => s.id == supplierId) ? supplierId : null,
+                      hint: const Text('Select supplier'),
+                      isExpanded: true,
+                      items: [
+                        for (final s in list)
+                          DropdownMenuItem(
+                            value: s.id,
+                            child: Text(s.name.isNotEmpty ? s.name : 'Unnamed Supplier'),
+                          ),
+                      ],
+                      onChanged: (v) => set(() => supplierId = v),
+                      validator: (v) => v == null ? 'Please select a supplier' : null,
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
                 InkWell(
@@ -672,7 +190,7 @@ class _RfqState extends ConsumerState<RfqScreen> {
                             controller: it.price,
                             keyboardType: TextInputType.number,
                             decoration: InputDecoration(
-                              labelText: tr('₹ each'),
+                              labelText: tr('â‚¹ each'),
                               isDense: true,
                             ),
                           ),
@@ -745,6 +263,7 @@ class _RfqState extends ConsumerState<RfqScreen> {
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(rfqsProvider);
+    ref.watch(suppliersProvider);
     const tabs = ['All', 'Draft', 'Sent', 'Converted'];
     return Scaffold(
       appBar: blueAppBar(
@@ -969,7 +488,7 @@ class _QuotationState extends ConsumerState<QuotationScreen> {
                           children: [
                             Expanded(child: Text(i.name)),
                             Text(
-                              '${i.qty} × ${money(i.expected)}',
+                              '${i.qty} Ã— ${money(i.expected)}',
                               style: TextStyle(color: C.muted),
                             ),
                           ],
@@ -1137,7 +656,7 @@ class _QuotationState extends ConsumerState<QuotationScreen> {
   }
 }
 
-// ═════════════════════════ All quotations (across RFQs) ═════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• All quotations (across RFQs) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 final _allQuotesProvider = FutureProvider.autoDispose<List<(Rfq, Quotation)>>((
   ref,
 ) async {
@@ -1207,7 +726,7 @@ class QuotationsListScreen extends ConsumerWidget {
                                       ),
                                     ),
                                     Text(
-                                      '${q.supplierName} • ${r.number}',
+                                      '${q.supplierName} â€¢ ${r.number}',
                                       style: TextStyle(
                                         color: C.muted,
                                         fontSize: 12.5,
@@ -1255,7 +774,7 @@ class QuotationsListScreen extends ConsumerWidget {
   }
 }
 
-// ═════════════════════════ RFQ detail (web: /rfqs/:id) ═════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• RFQ detail (web: /rfqs/:id) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 class RfqDetailScreen extends ConsumerStatefulWidget {
   const RfqDetailScreen({super.key, required this.rfq});
   final Rfq rfq;

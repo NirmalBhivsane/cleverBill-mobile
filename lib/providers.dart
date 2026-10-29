@@ -8,6 +8,7 @@ import 'core/network/api_client.dart';
 import 'core/theme/app_theme.dart';
 import 'core/storage/session_store.dart';
 import 'core/utils/json.dart';
+import 'core/utils/sound.dart';
 import 'data/api.dart';
 import 'data/models.dart';
 
@@ -263,6 +264,7 @@ class CartLine {
   final Product product;
   int qty;
   double get total => product.price * qty;
+  double get tax => (total * product.taxPercent / 100);
 }
 
 class CartState {
@@ -289,9 +291,15 @@ class CartState {
     return d.clamp(0, subtotal).toDouble();
   }
 
+  double get tax {
+    if (subtotal <= 0) return 0.0;
+    final discountRatio = (subtotal - discount) / subtotal;
+    return lines.fold(0.0, (a, l) => a + (l.tax * discountRatio));
+  }
+
   String get discountType => percent ? 'PERCENTAGE' : 'AMOUNT';
   double get total =>
-      (subtotal - discount).clamp(0, double.infinity).toDouble();
+      (subtotal - discount + tax).clamp(0, double.infinity).toDouble();
   int qtyOf(String productId) => lines
       .where((l) => l.product.id == productId)
       .fold(0, (a, l) => a + l.qty);
@@ -310,6 +318,7 @@ class CartController extends StateNotifier<CartState> {
   );
 
   void add(Product p) {
+    PosSound.playBeep();
     final l = List.of(state.lines);
     final i = l.indexWhere((e) => e.product.id == p.id);
     if (i >= 0) {
@@ -332,7 +341,10 @@ class CartController extends StateNotifier<CartState> {
     _lines(l);
   }
 
-  void inc(String id) => setQty(id, state.qtyOf(id) + 1);
+  void inc(String id) {
+    PosSound.playBeep();
+    setQty(id, state.qtyOf(id) + 1);
+  }
   void dec(String id) => setQty(id, state.qtyOf(id) - 1);
 
   void setDiscount(double v, {bool percent = false}) => state = CartState(

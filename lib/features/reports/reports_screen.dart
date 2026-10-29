@@ -1,15 +1,12 @@
-import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart' hide Text;
-
-import '../../core/i18n/i18n.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
+import '../../core/i18n/i18n.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/file_download.dart';
 import '../../core/utils/format.dart';
 import '../../core/utils/json.dart';
 import '../../core/widgets/charts.dart';
@@ -68,25 +65,249 @@ class _ReportsState extends ConsumerState<ReportsScreen> {
   ReportRange get _range => switch (_p) {
     1 => (from: _today.subtract(const Duration(days: 6)), to: _today),
     2 => (from: DateTime(_today.year, _today.month, 1), to: _today),
-    3 => (from: _custom?.start ?? _today, to: _custom?.end ?? _today),
+    3 => (from: DateTime(_today.year, _today.month - 5, 1), to: _today),
+    4 => (from: DateTime(_today.year, 1, 1), to: _today),
+    5 => (from: _custom?.start ?? _today, to: _custom?.end ?? _today),
     _ => (from: _today, to: _today),
   };
+
+  String _generateSalesCsv(ReportData d, ReportRange r) {
+    final buf = StringBuffer();
+    buf.writeln('Clever Bill - Sales Report');
+    buf.writeln('Period,${iso(r.from)} to ${iso(r.to)}');
+    buf.writeln('');
+    buf.writeln('Date,Invoices,Taxable Sales (INR),Tax Collected (INR),Discounts (INR),Total Revenue (INR)');
+    for (final day in d.days) {
+      final date = js(day['date']);
+      final invoices = ji(day['invoiceCount']);
+      final rev = jd(day['totalRevenue']);
+      final tax = jd(day['totalTax']);
+      final disc = jd(day['totalDiscount']);
+      final taxable = (rev - tax) < 0 ? 0.0 : (rev - tax);
+      buf.writeln(
+        '$date,$invoices,${taxable.toStringAsFixed(2)},${tax.toStringAsFixed(2)},${disc.toStringAsFixed(2)},${rev.toStringAsFixed(2)}',
+      );
+    }
+    buf.writeln('');
+    buf.writeln('SUMMARY');
+    buf.writeln('Total Invoices,${d.bills}');
+    buf.writeln('Total Sales (incl. Tax),${d.sales.toStringAsFixed(2)}');
+    buf.writeln('Total Tax Collected,${d.tax.toStringAsFixed(2)}');
+    buf.writeln('Total Discounts,${d.discount.toStringAsFixed(2)}');
+    buf.writeln('Total Expenses,${d.expenses.toStringAsFixed(2)}');
+    buf.writeln('Net (Sales - Expenses),${(d.sales - d.expenses).toStringAsFixed(2)}');
+
+    if (d.top.isNotEmpty) {
+      buf.writeln('');
+      buf.writeln('TOP PRODUCTS');
+      buf.writeln('Product,Quantity,Revenue (INR)');
+      for (final p in d.top) {
+        final name = js(p['productName'] ?? p['name']).replaceAll(',', ' ');
+        final qty = ji(p['totalQuantity'] ?? p['quantity'] ?? p['qty']);
+        final rev = jd(p['totalRevenue'] ?? p['revenue'] ?? p['totalAmount']);
+        buf.writeln('$name,$qty,${rev.toStringAsFixed(2)}');
+      }
+    }
+    return buf.toString();
+  }
+
+  String _generateGstCsv(ReportData d, ReportRange r) {
+    final buf = StringBuffer();
+    buf.writeln('Clever Bill - GST Summary Report');
+    buf.writeln('Period,${iso(r.from)} to ${iso(r.to)}');
+    buf.writeln('');
+    buf.writeln('Date,Invoices,Taxable Value (INR),CGST (INR),SGST (INR),Total Tax Collected (INR),Gross Revenue (INR)');
+    for (final day in d.days) {
+      final date = js(day['date']);
+      final invoices = ji(day['invoiceCount']);
+      final rev = jd(day['totalRevenue']);
+      final tax = jd(day['totalTax']);
+      final taxable = (rev - tax) < 0 ? 0.0 : (rev - tax);
+      final halfTax = tax / 2;
+      buf.writeln(
+        '$date,$invoices,${taxable.toStringAsFixed(2)},${halfTax.toStringAsFixed(2)},${halfTax.toStringAsFixed(2)},${tax.toStringAsFixed(2)},${rev.toStringAsFixed(2)}',
+      );
+    }
+    buf.writeln('');
+    buf.writeln('GST SUMMARY');
+    final taxableTotal = (d.sales - d.tax) < 0 ? 0.0 : (d.sales - d.tax);
+    final cgst = d.tax / 2;
+    final sgst = d.tax / 2;
+    buf.writeln('Gross Sales (incl. Tax),${d.sales.toStringAsFixed(2)}');
+    buf.writeln('Taxable Value (excl. Tax),${taxableTotal.toStringAsFixed(2)}');
+    buf.writeln('Central GST (CGST 50%),${cgst.toStringAsFixed(2)}');
+    buf.writeln('State GST (SGST 50%),${sgst.toStringAsFixed(2)}');
+    buf.writeln('Total GST Collected,${d.tax.toStringAsFixed(2)}');
+    buf.writeln('Total Invoices,${d.bills}');
+    return buf.toString();
+  }
 
   Future<void> _exportSales(bool excel) async {
     try {
       final r = _range;
-      final bytes = await ref
-          .read(apiProvider)
-          .exportSales(r.from, r.to, excel: excel);
-      final dir = await getTemporaryDirectory();
-      final f = File(
-        '${dir.path}/sales-${iso(r.from)}-${iso(r.to)}.${excel ? 'xlsx' : 'csv'}',
+      List<int> bytes = [];
+      String ext = excel ? 'xlsx' : 'csv';
+      String mime = excel
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'text/csv';
+
+      try {
+        bytes = await ref
+            .read(apiProvider)
+            .exportSales(r.from, r.to, excel: excel);
+      } catch (_) {}
+
+      if (bytes.isEmpty) {
+        final d = ref.read(reportProvider(r)).valueOrNull ??
+            ReportData([], 0, []);
+        final csv = _generateSalesCsv(d, r);
+        bytes = utf8.encode(csv);
+        ext = 'csv';
+        mime = 'text/csv';
+      }
+
+      final filename = 'sales-${iso(r.from)}-${iso(r.to)}.$ext';
+      await FileDownloader.download(
+        bytes: bytes,
+        filename: filename,
+        mimeType: mime,
+        shareText: 'Sales Report (${dateShort(r.from)} - ${dateShort(r.to)})',
       );
-      await f.writeAsBytes(bytes);
-      await Share.shareXFiles([XFile(f.path)]);
+      if (mounted) toast(context, 'Downloaded $filename');
     } catch (e) {
       if (mounted) toast(context, '$e', error: true);
     }
+  }
+
+  Future<void> _exportGstCsv() async {
+    try {
+      final r = _range;
+      final d = ref.read(reportProvider(r)).valueOrNull ??
+          ReportData([], 0, []);
+      final csv = _generateGstCsv(d, r);
+      final bytes = utf8.encode(csv);
+      final filename = 'gst-summary-${iso(r.from)}-${iso(r.to)}.csv';
+      await FileDownloader.download(
+        bytes: bytes,
+        filename: filename,
+        mimeType: 'text/csv',
+        shareText: 'GST Summary (${dateShort(r.from)} - ${dateShort(r.to)})',
+      );
+      if (mounted) toast(context, 'Downloaded $filename');
+    } catch (e) {
+      if (mounted) toast(context, '$e', error: true);
+    }
+  }
+
+  Widget _gstRow(
+    String label,
+    String value, {
+    Color? color,
+    bool isBold = false,
+    bool isSub = false,
+  }) => Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Text(
+        label,
+        style: TextStyle(
+          color: isSub ? C.muted : C.text,
+          fontSize: isSub ? 12 : 13.5,
+          fontWeight: isBold ? FontWeight.w800 : FontWeight.w500,
+        ),
+      ),
+      Text(
+        value,
+        style: TextStyle(
+          color: color ?? C.text,
+          fontSize: isSub ? 12 : 13.5,
+          fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
+        ),
+      ),
+    ],
+  );
+
+  void _showGstSummary(ReportData? d, ReportRange r) {
+    if (d == null) {
+      toast(context, 'Report data is loading...');
+      return;
+    }
+    final taxable = (d.sales - d.tax) < 0 ? 0.0 : (d.sales - d.tax);
+    final cgst = d.tax / 2;
+    final sgst = d.tax / 2;
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.account_balance_outlined, color: C.primary),
+            const SizedBox(width: 8),
+            const Text('GST Summary'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Period: ${dateShort(r.from)} – ${dateShort(r.to)}',
+                style: TextStyle(
+                  color: C.muted,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Divider(height: 20),
+              _gstRow('Gross sales (incl. tax)', money(d.sales), isBold: true),
+              const SizedBox(height: 6),
+              _gstRow('Taxable turnover', money(taxable)),
+              const SizedBox(height: 6),
+              _gstRow(
+                'Total GST collected',
+                money(d.tax),
+                color: C.success,
+                isBold: true,
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
+                child: Column(
+                  children: [
+                    _gstRow('• Central GST (CGST 50%)', money(cgst), isSub: true),
+                    const SizedBox(height: 2),
+                    _gstRow('• State GST (SGST 50%)', money(sgst), isSub: true),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+              _gstRow('Discounts given', money(d.discount)),
+              const SizedBox(height: 6),
+              _gstRow('Total invoices / bills', '${d.bills}'),
+              const Divider(height: 20),
+              Text(
+                'Download invoice-wise GST collection details and tax slabs as CSV for accounting.',
+                style: TextStyle(color: C.muted, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              _exportGstCsv();
+            },
+            icon: const Icon(Icons.download, size: 18),
+            label: const Text('Export GST (CSV)'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -101,7 +322,7 @@ class _ReportsState extends ConsumerState<ReportsScreen> {
       0.0,
       (a, c) => a + c.outstanding,
     );
-    const labels = ['Today', 'Week', 'Month', 'Custom'];
+    const labels = ['Today', 'Week', 'Month', '6 Months', 'Year', 'Custom'];
     return Scaffold(
       appBar: blueAppBar(
         context,
@@ -115,7 +336,7 @@ class _ReportsState extends ConsumerState<ReportsScreen> {
             labels: labels,
             selected: _p,
             onSelect: (i) async {
-              if (i == 3) {
+              if (i == 5) {
                 final d = await showDateRangePicker(
                   context: context,
                   firstDate: DateTime(2020),
@@ -326,36 +547,13 @@ class _ReportsState extends ConsumerState<ReportsScreen> {
                 Icons.description_outlined,
                 'GST summary',
                 'Tax collection details',
-                () {
-                  final d = async.valueOrNull;
-                  if (d == null) return;
-                  showDialog(
-                    context: context,
-                    builder: (_) => AlertDialog(
-                      title: const Text('GST summary'),
-                      content: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Sales (incl. tax): ${money(d.sales)}'),
-                          Text('Tax collected: ${money(d.tax)}'),
-                          Text('Discounts given: ${money(d.discount)}'),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Use the Excel export for the invoice-wise GST breakup.',
-                            style: TextStyle(color: C.muted, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Close'),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                () => _showGstSummary(async.valueOrNull, r),
+              ),
+              _RepTile(
+                Icons.receipt_long_outlined,
+                'GST report (CSV)',
+                'Download GST data',
+                () => _exportGstCsv(),
               ),
               _RepTile(
                 Icons.groups_outlined,
@@ -366,7 +564,7 @@ class _ReportsState extends ConsumerState<ReportsScreen> {
               _RepTile(
                 Icons.download_outlined,
                 'Export (CSV)',
-                'Download or share',
+                'Download sales CSV',
                 () => _exportSales(false),
               ),
             ],

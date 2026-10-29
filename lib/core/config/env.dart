@@ -2,6 +2,6 @@
 class Env {
   static const apiBase = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://api.cleverbill.in',
+    defaultValue: 'https://uat-api.cleverbill.in',
   );
 }
