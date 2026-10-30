@@ -15,6 +15,7 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../home/home_screen.dart';
 import '../invoices/invoice_screens.dart' show showProductPicker;
+import '../suppliers/supplier_constants.dart';
 
 PreferredSizeWidget _shopBar(
   BuildContext context,
@@ -149,7 +150,7 @@ class _ProductsTabState extends ConsumerState<_ProductsTab> {
                     (p) =>
                         p.name.toLowerCase().contains(_q) ||
                         p.sku.toLowerCase().contains(_q) ||
-                        p.barcode.contains(_q),
+                        p.barcode.toLowerCase().contains(_q),
                   )
                   .toList();
             return RefreshIndicator(
@@ -968,6 +969,13 @@ class _ProductFormState extends ConsumerState<ProductFormScreen> {
         : '${widget.product!.lowStockThreshold}',
   );
   String? _categoryId;
+  String? _supplierId;
+  late final _hsn = TextEditingController(
+    text: js(widget.product?.j['hsnCode'], js(widget.product?.j['hsn'])),
+  );
+  late final _desc = TextEditingController(
+    text: js(widget.product?.j['description']),
+  );
   late String _unit = widget.product?.unit ?? 'PCS';
   late String _gst = _slabOf(widget.product?.taxPercent ?? 0);
   late bool _track = !(widget.product?.isService ?? false);
@@ -1003,6 +1011,14 @@ class _ProductFormState extends ConsumerState<ProductFormScreen> {
     super.initState();
     _categoryId = widget.product?.categoryId;
     _expiry = widget.product?.expiryDate;
+    _supplierId = widget.product?.j['supplierId']?.toString();
+  }
+
+  @override
+  void dispose() {
+    _hsn.dispose();
+    _desc.dispose();
+    super.dispose();
   }
 
   Future<void> _pick(ImageSource s) async {
@@ -1055,6 +1071,9 @@ class _ProductFormState extends ConsumerState<ProductFormScreen> {
         'lowStockThreshold': int.tryParse(_low.text) ?? 10,
         'unit': _unit,
         'categoryId': _categoryId,
+        'supplierId': _supplierId,
+        if (_hsn.text.trim().isNotEmpty) 'hsnCode': _hsn.text.trim(),
+        if (_desc.text.trim().isNotEmpty) 'description': _desc.text.trim(),
         'isService': !_track,
         'active': true,
         'imageUrl': img,
@@ -1075,6 +1094,178 @@ class _ProductFormState extends ConsumerState<ProductFormScreen> {
   }
 
   /// Create a category without leaving the product form and select it.
+  /// Create a supplier inline without leaving the product form (Showcase Screen 6).
+  Future<void> _quickAddSupplier() async {
+    final nameCtl = TextEditingController();
+    final phoneCtl = TextEditingController();
+    final gstCtl = TextEditingController();
+    String state = 'Maharashtra';
+    bool busy = false;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: C.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setM) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            20,
+            20,
+            MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Add New Supplier',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                LabeledField(
+                  label: 'Supplier Name *',
+                  controller: nameCtl,
+                  required: true,
+                  hint: 'e.g. Ramesh Traders',
+                ),
+                LabeledField(
+                  label: 'Phone Number *',
+                  controller: phoneCtl,
+                  keyboard: TextInputType.phone,
+                  required: true,
+                  maxLength: 10,
+                  hint: 'e.g. 9876543210',
+                ),
+                LabeledField(
+                  label: 'GSTIN (optional)',
+                  controller: gstCtl,
+                  hint: 'e.g. 27ABCDE1234F1Z5',
+                ),
+                const Text(
+                  'State *',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<String>(
+                  value: state,
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  items: [
+                    for (final st in indianStates)
+                      DropdownMenuItem(value: st.name, child: Text(st.name)),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) setM(() => state = v);
+                  },
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: C.primary,
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: busy
+                            ? null
+                            : () async {
+                                final name = nameCtl.text.trim();
+                                final phone = phoneCtl.text.trim();
+                                if (name.isEmpty) {
+                                  toast(ctx, 'Enter supplier name', error: true);
+                                  return;
+                                }
+                                if (phone.isEmpty || !isValidPhone(phone)) {
+                                  toast(
+                                    ctx,
+                                    'Enter valid 10-digit phone',
+                                    error: true,
+                                  );
+                                  return;
+                                }
+                                setM(() => busy = true);
+                                try {
+                                  final api = ref.read(apiProvider);
+                                  await api.saveSupplier({
+                                    'name': name,
+                                    'phone': phone,
+                                    'gstin': gstCtl.text.trim().isEmpty
+                                        ? null
+                                        : gstCtl.text.trim().toUpperCase(),
+                                    'state': state,
+                                    'active': true,
+                                  });
+                                  ref.invalidate(suppliersProvider);
+                                  final fresh = (await api.suppliers()).items;
+                                  final match = fresh
+                                          .where((s) => s.name == name)
+                                          .firstOrNull ??
+                                      fresh.lastOrNull;
+                                  if (match != null && mounted) {
+                                    setState(() => _supplierId = match.id);
+                                  }
+                                  if (ctx.mounted) {
+                                    Navigator.pop(ctx);
+                                    toast(
+                                      context,
+                                      'Supplier created and selected',
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (ctx.mounted) toast(ctx, '$e', error: true);
+                                } finally {
+                                  if (ctx.mounted) setM(() => busy = false);
+                                }
+                              },
+                        child: busy
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Save Supplier'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
   Future<void> _quickAddCategory() async {
     final ctl = TextEditingController();
     final name = await showDialog<String>(
@@ -1253,6 +1444,44 @@ class _ProductFormState extends ConsumerState<ProductFormScreen> {
             label: 'SKU (optional)',
             controller: _sku,
             hint: 'e.g. RICE-001',
+          ),
+          // Supplier selection with inline Add Supplier modal (Showcase Screen 6)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: _drop<String?>('Supplier', _supplierId, [
+                  const DropdownMenuItem(
+                    value: null,
+                    child: Text('Select supplier (optional)'),
+                  ),
+                  for (final s in ref.watch(suppliersProvider).valueOrNull ?? [])
+                    DropdownMenuItem(value: s.id, child: Text(s.name)),
+                ], (v) => setState(() => _supplierId = v)),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 8, bottom: 14),
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(100, 50),
+                  ),
+                  onPressed: _quickAddSupplier,
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Supplier'),
+                ),
+              ),
+            ],
+          ),
+          LabeledField(
+            label: 'HSN Code (optional)',
+            controller: _hsn,
+            hint: 'e.g. 847160',
+          ),
+          LabeledField(
+            label: 'Description (optional)',
+            controller: _desc,
+            hint: 'e.g. Wireless mouse with smooth control',
+            maxLines: 2,
           ),
           Row(
             children: [

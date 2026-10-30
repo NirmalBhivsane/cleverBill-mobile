@@ -18,6 +18,7 @@ import '../home/home_screen.dart';
 import 'invoice_actions.dart';
 import 'razorpay_flow.dart';
 import 'thermal_printer.dart';
+import '../../core/utils/sound.dart';
 import '../../core/widgets/signature_pad.dart';
 
 // ═════════════════════════ POS (product picker) ═════════════════════════
@@ -174,7 +175,7 @@ class _PosState extends ConsumerState<PosScreen> {
                           (p) =>
                               p.name.toLowerCase().contains(_q) ||
                               p.sku.toLowerCase().contains(_q) ||
-                              p.barcode.contains(_q),
+                              p.barcode.toLowerCase().contains(_q),
                         )
                         .toList();
                   }
@@ -267,6 +268,15 @@ class _PosProductTile extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: AppCard(
+        onTap: qty == 0
+            ? (p.isOut
+                ? () => toast(
+                    context,
+                    '${p.name} is out of stock',
+                    error: true,
+                  )
+                : () => ctl.add(p))
+            : null,
         padding: const EdgeInsets.all(10),
         child: Row(
           children: [
@@ -383,23 +393,41 @@ class _ScanState extends ConsumerState<ScanScreen> {
   }
 
   Future<void> _handle(String code) async {
-    if (code == _last) return;
-    _last = code;
-    HapticFeedback.mediumImpact();
+    final trimmed = code.trim();
+    if (trimmed.isEmpty) return;
+    if (trimmed == _last) return;
+    _last = trimmed;
+    try {
+      PosSound.playBeep();
+      HapticFeedback.mediumImpact();
+    } catch (_) {}
     if (widget.forProductForm) {
-      if (mounted) context.pop(code);
+      if (mounted) {
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop(trimmed);
+        } else {
+          context.pop(trimmed);
+        }
+      }
       return;
     }
-    final local = ref
-        .read(productsProvider)
-        .valueOrNull
-        ?.where((p) => p.barcode == code)
-        .firstOrNull;
-    final p = local ?? await ref.read(apiProvider).productByBarcode(code);
+    Product? p;
+    try {
+      final local = ref
+          .read(productsProvider)
+          .valueOrNull
+          ?.where((pr) =>
+              pr.barcode.trim().toLowerCase() == trimmed.toLowerCase() ||
+              pr.sku.trim().toLowerCase() == trimmed.toLowerCase())
+          .firstOrNull;
+      p = local ?? await ref.read(apiProvider).productByBarcode(trimmed);
+    } catch (e) {
+      debugPrint('Error finding product by barcode: ');
+    }
     if (!mounted) return;
     setState(() {
       _found = p;
-      _notFound = p == null ? code : null;
+      _notFound = p == null ? trimmed : null;
     });
   }
 
@@ -407,20 +435,28 @@ class _ScanState extends ConsumerState<ScanScreen> {
     final c = TextEditingController();
     final code = await showDialog<String>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dlgCtx) => AlertDialog(
         title: const Text('Enter barcode'),
         content: TextField(
           controller: c,
-          keyboardType: TextInputType.number,
+          keyboardType: TextInputType.text,
           autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Enter barcode or SKU number',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (val) {
+            final text = val.trim();
+            if (text.isNotEmpty) Navigator.pop(dlgCtx, text);
+          },
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dlgCtx),
             child: const Text('Cancel'),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, c.text.trim()),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dlgCtx, c.text.trim()),
             child: const Text('Search'),
           ),
         ],
@@ -439,9 +475,41 @@ class _ScanState extends ConsumerState<ScanScreen> {
       children: [
         MobileScanner(
           controller: _ctl,
+          errorBuilder: (context, error, child) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.videocam_off_outlined,
+                        size: 56, color: Colors.white70),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Camera unavailable ()',
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Check camera permissions or use manual entry below.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton.icon(
+                      onPressed: _manual,
+                      icon: const Icon(Icons.keyboard),
+                      label: const Text('Enter Barcode Manually'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
           onDetect: (cap) {
             final v = cap.barcodes.firstOrNull?.rawValue;
-            if (v != null) _handle(v);
+            if (v != null && v.isNotEmpty) _handle(v);
           },
         ),
         SafeArea(
@@ -572,9 +640,15 @@ class _ScanState extends ConsumerState<ScanScreen> {
                         ),
                       ],
                     ),
-                  TextButton(
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: C.primary,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(46),
+                    ),
                     onPressed: _manual,
-                    child: const Text('Or enter barcode manually'),
+                    icon: const Icon(Icons.keyboard),
+                    label: const Text('Enter or Paste Barcode Manually'),
                   ),
                 ],
               ),
@@ -895,6 +969,8 @@ class CartScreen extends ConsumerWidget {
                   child: Column(
                     children: [
                       _SumRow('Subtotal', money(cart.subtotal)),
+                      if (cart.tax > 0)
+                        _SumRow('Tax (GST)', money(cart.tax)),
                       InkWell(
                         onTap: () => _editDiscount(context, ref, cart),
                         child: Padding(
@@ -1260,7 +1336,8 @@ class _PaymentState extends ConsumerState<PaymentScreen> {
   @override
   void initState() {
     super.initState();
-    _received.text = ref.read(cartProvider).total.toStringAsFixed(0);
+    final t = ref.read(cartProvider).total;
+    _received.text = t.toStringAsFixed(t % 1 == 0 ? 0 : 2);
     _received.addListener(() => setState(() {}));
     _paidNow.addListener(() => setState(() {}));
     final c = ref.read(cartProvider).customer;
@@ -1418,6 +1495,12 @@ class _PaymentState extends ConsumerState<PaymentScreen> {
                     '- ${money(cart.discount)}',
                     color: C.success,
                   ),
+                if (cart.tax > 0)
+                  _SumRow(
+                    'Tax (GST)',
+                    '+ ${money(cart.tax)}',
+                    color: C.muted,
+                  ),
                 const Divider(),
                 _SumRow('Total amount', money(total), bold: true),
               ],
@@ -1470,36 +1553,58 @@ class _PaymentState extends ConsumerState<PaymentScreen> {
           ),
           const SizedBox(height: 16),
           if (_mode == 'CASH') ...[
-            const Text(
-              'Amount received (₹)',
-              style: TextStyle(fontWeight: FontWeight.w700),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Amount received (₹)',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                TextButton.icon(
+                  onPressed: () => _received.text = total.toStringAsFixed(total % 1 == 0 ? 0 : 2),
+                  icon: const Icon(Icons.sync, size: 16),
+                  label: const Text('Exact Total', style: TextStyle(fontSize: 12)),
+                ),
+              ],
             ),
             const SizedBox(height: 6),
             TextField(
               controller: _received,
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+              decoration: InputDecoration(
+                prefixText: '₹ ',
+                hintText: total.toStringAsFixed(total % 1 == 0 ? 0 : 2),
+              ),
             ),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: C.successSoft,
+                color: received >= total ? C.successSoft : C.warningSoft,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.payments_outlined, color: C.success),
+                  Icon(
+                    received >= total ? Icons.payments_outlined : Icons.pending_outlined,
+                    color: received >= total ? C.success : C.warning,
+                  ),
                   const SizedBox(width: 10),
-                  const Text(
-                    'Change to return',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                  Text(
+                    received >= total ? 'Change to return' : 'Pending balance',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: received >= total ? C.success : C.warning,
+                    ),
                   ),
                   const Spacer(),
                   Text(
-                    money((received - total).clamp(0, double.infinity)),
+                    received >= total
+                        ? money((received - total).clamp(0, double.infinity))
+                        : money((total - received).clamp(0, double.infinity)),
                     style: TextStyle(
-                      color: C.success,
+                      color: received >= total ? C.success : C.warning,
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
                     ),

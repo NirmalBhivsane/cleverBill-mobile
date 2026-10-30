@@ -62,4 +62,116 @@ void main() {
     expect(c.id, '1');
     expect(c.gst, 12);
   });
+
+  group('Supplier Module', () {
+    test('Supplier model parsing and financial calculations', () {
+      final s = Supplier({
+        'id': 'sup-1',
+        'name': 'Kantilal Kamble',
+        'contactPerson': 'Kantilal Kamble',
+        'phone': '9358800921',
+        'gstin': '26ABCDE1234F125',
+        'state': 'Maharashtra',
+        'active': true,
+        'totalPurchases': 250000,
+        'totalPaid': 165000,
+        'outstanding': 85000,
+        'ordersCount': 12,
+        'pendingDeliveries': 2,
+      });
+
+      expect(s.id, 'sup-1');
+      expect(s.name, 'Kantilal Kamble');
+      expect(s.phone, '9358800921');
+      expect(s.gstin, '26ABCDE1234F125');
+      expect(s.state, 'Maharashtra');
+      expect(s.active, isTrue);
+      expect(s.status, 'Active');
+      expect(s.totalPurchases, 250000.0);
+      expect(s.totalPaid, 165000.0);
+      expect(s.outstanding, 85000.0);
+      expect(s.ordersCount, 12);
+      expect(s.pendingDeliveries, 2);
+    });
+
+    test('Supplier default outstanding calculation when not given', () {
+      final s = Supplier({
+        'id': 'sup-2',
+        'name': 'Ramesh Traders',
+        'totalPurchases': 50000,
+        'totalPaid': 30000,
+      });
+      expect(s.outstanding, 20000.0);
+    });
+
+    test('SupplierProductMapping model', () {
+      final m = SupplierProductMapping({
+        'id': 'map-1',
+        'supplierId': 'sup-1',
+        'supplierName': 'Kantilal Kamble',
+        'productId': 'prod-101',
+        'productName': 'Laptop',
+        'hsnCode': '847130',
+        'purchasePrice': 45000,
+        'stock': 8,
+        'preferredFlag': true,
+      });
+
+      expect(m.id, 'map-1');
+      expect(m.productName, 'Laptop');
+      expect(m.hsnCode, '847130');
+      expect(m.purchasePrice, 45000.0);
+      expect(m.stock, 8);
+      expect(m.isPreferred, isTrue);
+    });
+
+    test('SupplierBill model', () {
+      final b = SupplierBill({
+        'id': 'bill-1',
+        'invoiceNumber': 'SI-001',
+        'amount': 45000,
+        'status': 'Paid',
+      });
+
+      expect(b.id, 'bill-1');
+      expect(b.invoiceNumber, 'SI-001');
+      expect(b.amount, 45000.0);
+      expect(b.status, 'Paid');
+    });
+
+    test('PurchaseReturn model', () {
+      final r = PurchaseReturn({
+        'id': 'ret-1',
+        'returnNumber': 'PR-001',
+        'productName': 'Laptop',
+        'quantity': 2,
+        'reason': 'Damaged',
+        'status': 'Completed',
+        'settlementType': 'Supplier Credit',
+      });
+
+      expect(r.id, 'ret-1');
+      expect(r.returnNumber, 'PR-001');
+      expect(r.quantity, 2);
+      expect(r.reason, 'Damaged');
+      expect(r.status, 'Completed');
+      expect(r.settlementType, 'Supplier Credit');
+    });
+
+    test('SupplierLedgerEntry model', () {
+      final l = SupplierLedgerEntry({
+        'id': 'led-1',
+        'particulars': 'Purchase Invoice #PI-001',
+        'debit': 45000,
+        'credit': 0,
+        'balance': 50000,
+        'type': 'PURCHASE',
+      });
+
+      expect(l.particulars, 'Purchase Invoice #PI-001');
+      expect(l.debit, 45000.0);
+      expect(l.credit, 0.0);
+      expect(l.balance, 50000.0);
+    });
+  });
 }

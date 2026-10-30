@@ -13,6 +13,7 @@ import '../../providers.dart';
 import '../home/home_screen.dart';
 import '../pos/invoice_actions.dart';
 import '../pos/thermal_printer.dart';
+import '../../core/utils/sound.dart';
 
 Future<Product?> showProductPicker(BuildContext context, WidgetRef ref) {
   final all = ref.read(productsProvider).valueOrNull ?? [];
@@ -32,7 +33,7 @@ Future<Product?> showProductPicker(BuildContext context, WidgetRef ref) {
                 (p) =>
                     p.name.toLowerCase().contains(q) ||
                     p.sku.toLowerCase().contains(q) ||
-                    p.barcode.contains(q),
+                    p.barcode.toLowerCase().contains(q),
               )
               .toList();
           return SizedBox(
@@ -60,7 +61,10 @@ Future<Product?> showProductPicker(BuildContext context, WidgetRef ref) {
                       subtitle: Text(
                         '${money(l[i].price)} • Stock ${l[i].stock}',
                       ),
-                      onTap: () => Navigator.pop(ctx, l[i]),
+                      onTap: () {
+                        PosSound.playBeep();
+                        Navigator.pop(ctx, l[i]);
+                      },
                     ),
                   ),
                 ),
@@ -114,7 +118,10 @@ Future<Customer?> showCustomerPicker(BuildContext context, WidgetRef ref) {
                       leading: Avatar(initials(l[i].name), size: 40),
                       title: Text(l[i].name),
                       subtitle: Text(l[i].mobile),
-                      onTap: () => Navigator.pop(ctx, l[i]),
+                      onTap: () {
+                        PosSound.playBeep();
+                        Navigator.pop(ctx, l[i]);
+                      },
                     ),
                   ),
                 ),

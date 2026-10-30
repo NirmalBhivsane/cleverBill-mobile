@@ -210,7 +210,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/suppliers', builder: (_, __) => const SuppliersScreen()),
       GoRoute(
         path: '/supplier/:id',
-        builder: (_, s) => SupplierDetailScreen(supplier: s.extra as Supplier),
+        builder: (_, s) => SupplierDetailScreen(
+          id: s.pathParameters['id'],
+          supplier: s.extra as Supplier?,
+        ),
       ),
       GoRoute(
         path: '/supplier-form',
